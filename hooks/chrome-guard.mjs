@@ -78,7 +78,15 @@ function adjustOpenPages(sessionId, delta) {
 const input = readStdin();
 if (!input || MODE === 'off') process.exit(0);
 
-const [, server, tool] = String(input.tool_name || '').split('__');
+// Tool names arrive as mcp__<server>__<tool>, and a plugin-provided server
+// carries its own qualified id (plugin:<plugin>:<server>), so the server part
+// can itself contain separators. Peel the tool off the end and treat the rest
+// as the server.
+const raw = String(input.tool_name || '');
+if (!raw.startsWith('mcp__')) process.exit(0);
+const segments = raw.slice('mcp__'.length).split('__');
+const tool = segments.at(-1);
+const server = segments.slice(0, -1).join('__');
 if (!server || !tool || !server.includes('chrome')) process.exit(0);
 
 const args = input.tool_input || {};
