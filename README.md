@@ -120,6 +120,17 @@ standing context cost of a few hundred tokens — the agents' descriptions in th
 subagent list. Everything else is resolved at runtime and costs nothing until
 used.
 
+## Where the files go
+
+Several of the rules push output to disk, so it is worth knowing where it lands.
+chrome-devtools-mcp writes only inside the MCP roots the client negotiated — in
+practice the project directory. If the client negotiates no roots, writes are
+confined to the OS temp directory instead. A refused path is almost always this,
+not a permissions problem: write to the temp directory and read it back from there.
+
+Clean up what you write. Network dumps in particular can contain authorization
+headers and response bodies.
+
 ## Configure
 
 Via `claude plugin install --config`, or the plugin's settings:
