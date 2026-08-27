@@ -94,6 +94,9 @@ const session = input.session_id;
 // The uncapped server exists solely for pixel-exact work, which belongs on
 // disk and in a diff script — never in the context window.
 const isPixelServer = server.includes('pixel');
+// The debug server is where forensics happen — many requests, large traces —
+// so it holds a stricter line on writing bulk output to disk.
+const isDebugServer = server.includes('debug');
 
 if (args.includeSnapshot === true) {
   refuse(
@@ -141,6 +144,41 @@ if (tool === 'take_screenshot' && !args.filePath) {
 
 if (tool === 'take_snapshot' && isPixelServer && !args.filePath) {
   refuse('On the chrome-pixel server, snapshots must be written to disk via filePath.');
+}
+
+// Deep-debugging output is the largest there is, and all of it has a file-based
+// path: the heap analysis tools read a .heapsnapshot from disk, traces and
+// lighthouse reports are written and then queried. None of it belongs inline.
+
+if (tool === 'take_heapsnapshot' && !args.filePath) {
+  refuse(
+    'Heap snapshots belong on disk. Pass filePath, then analyse the file with get_heapsnapshot_summary, ' +
+    'query_heapsnapshot_objects, compare_heapsnapshots and friends — those tools take file paths and ' +
+    'return only the slice you asked for. They need the chrome-debug server, which enables memory ' +
+    'debugging; the default chrome server can capture a snapshot but not analyse one.',
+  );
+}
+
+if (tool === 'list_network_requests' && !args.resourceTypes && args.pageSize === undefined) {
+  refuse(
+    'Narrow the request list before pulling it in: resourceTypes (e.g. ["fetch","xhr"]) for the kind ' +
+    'of traffic you care about, or pageSize to cap the listing and page through with pageIdx.',
+  );
+}
+
+if (tool === 'get_network_request' && isDebugServer && !args.responseFilePath) {
+  refuse(
+    'Response bodies average ~2500 tokens here and the large ones are far worse. Pass responseFilePath ' +
+    '(and requestFilePath if you need the request too), then pull out what matters with jq or grep. ' +
+    'The default chrome server allows inline bodies for the occasional small response.',
+  );
+}
+
+if (tool === 'lighthouse_audit' && !args.outputDirPath) {
+  refuse(
+    'A lighthouse report is far too large to read inline. Pass outputDirPath and query the report ' +
+    'on disk for the specific audits you are investigating.',
+  );
 }
 
 if (tool === 'new_page') {

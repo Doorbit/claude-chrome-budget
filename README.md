@@ -43,16 +43,21 @@ token cost by nothing at all. Only the pixel dimensions matter.
 
 ## What the plugin does
 
-**Two browsers instead of one.**
+**Three browsers instead of one**, because the three jobs have genuinely different
+needs. All run `--isolated`, so each starts from a clean profile instead of
+inheriting a pile of tabs from last week, and all launch Chrome lazily — a server
+you do not use costs nothing.
 
-- `chrome` — the default. Runs `--isolated`, so it starts from a clean profile and
-  cannot inherit a pile of tabs from last week, and caps screenshots at 1024×768
-  (configurable). Roughly halves the cost of an average screenshot.
-- `chrome-pixel` — uncapped, for pixel-exact comparison work. Screenshots there
-  must go to disk via `filePath`; comparing images belongs in a diff script, not in
-  a context window.
-
-Both launch Chrome lazily, so the second server costs nothing until it is used.
+- `chrome` — the default, for looking at and driving a page. Caps screenshots at
+  1024×768 (configurable), which roughly halves the cost of an average screenshot.
+- `chrome-pixel` — uncapped, for pixel-exact comparison. Screenshots there must go
+  to disk via `filePath`: comparing two renderings belongs in a diff script, which
+  is both cheaper and more accurate than comparing them by eye.
+- `chrome-debug` — performance traces, memory and network forensics. This is the
+  only server with `--memoryDebugging`, so the twelve heap-analysis tools
+  (`get_heapsnapshot_summary`, `compare_heapsnapshots`, `query_heapsnapshot_objects`
+  and the rest) exist only here. Without it you can capture a heap snapshot but not
+  analyse one.
 
 **A guard that redirects rather than forbids.** A `PreToolUse` hook refuses the
 handful of call shapes that are reliably expensive, and every refusal names the
@@ -65,13 +70,22 @@ cheaper call that answers the same question:
 | `list_console_messages` without `types` | unfiltered dumps are mostly noise | `types: ["error"]`, plus `pageSize` |
 | `take_screenshot` with `fullPage` and no `filePath` | the most expensive image shape there is | `uid` for one element, or `filePath` |
 | `new_page` beyond the page budget | every open tab is appended to every navigation response | `close_page`, or reuse via `navigate_page` |
+| `take_heapsnapshot` without `filePath` | a heap snapshot inline is unusable anyway | write it, then analyse the file |
+| `list_network_requests` unfiltered | the whole log is rarely the question | `resourceTypes`, or `pageSize` + `pageIdx` |
+| `get_network_request` inline, on `chrome-debug` | response bodies average ~2500 tokens | `responseFilePath`, then `jq` |
+| `lighthouse_audit` without `outputDirPath` | reports are far too large to read inline | write it, then read the audits you need |
 
 Set `enforcement` to `warn` to get the explanations without the refusals, or `off`
 to disable it.
 
-**A `browser` subagent.** It absorbs the snapshots and screenshots in its own
-context and returns a verdict, which is what actually defuses the 805×. Delegate to
-it whenever browser work runs longer than a couple of calls.
+**Two subagents.** They absorb the snapshots, screenshots and traces in their own
+context and return a finding, which is what actually defuses the 805×.
+
+- `browser` — ordinary runtime verification. Delegate to it whenever browser work
+  runs longer than a couple of calls.
+- `browser-debug` — traces, heap comparison, network forensics, lighthouse. These
+  produce the largest output the tooling can produce, so they get their own context
+  and their own instrument list.
 
 ## Install
 
@@ -100,8 +114,9 @@ Verify the install:
 claude plugin details chrome-budget
 ```
 
-Expect one agent (`browser`), one `PreToolUse` hook, and two MCP servers, at a
-standing context cost of roughly 150 tokens — the agent's description in the
+Expect two agents (`browser`, `browser-debug`), one `PreToolUse` hook, and three MCP
+servers, at a
+standing context cost of a few hundred tokens — the agents' descriptions in the
 subagent list. Everything else is resolved at runtime and costs nothing until
 used.
 
