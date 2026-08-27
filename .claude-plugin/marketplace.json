@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "chrome-budget",
+  "description": "Context-budget tooling for the Chrome DevTools MCP server",
+  "owner": {
+    "name": "Doorbit"
+  },
+  "plugins": [
+    {
+      "name": "chrome-budget",
+      "displayName": "Chrome MCP Budget",
+      "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
+      "version": "0.1.0",
+      "category": "mcp",
+      "source": "./"
+    }
+  ]
+}

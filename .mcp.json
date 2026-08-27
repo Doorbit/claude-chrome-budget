@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "chrome": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.8.0",
+        "--isolated",
+        "--screenshotMaxWidth",
+        "${user_config.screenshot_max_width}",
+        "--screenshotMaxHeight",
+        "${user_config.screenshot_max_height}"
+      ]
+    },
+    "chrome-pixel": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.8.0",
+        "--isolated"
+      ]
+    }
+  }
+}

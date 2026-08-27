@@ -1,0 +1,43 @@
+{
+  "name": "chrome-budget",
+  "displayName": "Chrome MCP Budget",
+  "version": "0.1.0",
+  "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
+  "keywords": ["chrome-devtools-mcp", "mcp", "tokens", "context", "browser", "cost"],
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "agents": "./agents/",
+  "userConfig": {
+    "screenshot_max_width": {
+      "type": "number",
+      "title": "Screenshot max width (px)",
+      "description": "Screenshots wider than this are downscaled before they reach the model. Image cost scales with area, not file size, so this is the only setting that actually reduces screenshot tokens.",
+      "min": 200,
+      "max": 4000,
+      "default": 1024
+    },
+    "screenshot_max_height": {
+      "type": "number",
+      "title": "Screenshot max height (px)",
+      "description": "Same as the width cap, applied to height. The smaller of the two scale factors wins.",
+      "min": 200,
+      "max": 4000,
+      "default": 768
+    },
+    "max_open_pages": {
+      "type": "number",
+      "title": "Open page budget",
+      "description": "Navigation tools append a list of every open tab to their response. Once this many pages are open, opening another is refused until one is closed.",
+      "min": 1,
+      "max": 50,
+      "default": 8
+    },
+    "enforcement": {
+      "type": "string",
+      "title": "Enforcement level",
+      "description": "'block' refuses expensive calls and explains the cheap alternative. 'warn' allows them and appends the same explanation. 'off' disables the guard entirely.",
+      "default": "block"
+    }
+  }
+}

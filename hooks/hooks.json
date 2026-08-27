@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__chrome.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/chrome-guard.mjs\"",
+            "statusMessage": "Chrome-Budget prüfen"
+          }
+        ]
+      }
+    ]
+  }
+}
