@@ -32,18 +32,50 @@ const ROOT = join(homedir(), '.claude', 'projects');
 // Anthropic bills images by area, not by file size: roughly (w*h)/750 tokens
 // after the longest edge is clamped to 1568px. Compression settings therefore
 // do nothing for context cost; only the pixel dimensions do.
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+function readDimensions(buf) {
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+  }
+  if (buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') {
+    const chunk = buf.subarray(12, 16).toString('latin1');
+    if (chunk === 'VP8X') return [buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1];
+    if (chunk === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+    if (chunk === 'VP8L') {
+      const bits = buf.readUInt32LE(21);
+      return [(bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1];
+    }
+  }
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    for (let i = 2; i < buf.length - 9; ) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      if (SOF_MARKERS.has(marker)) return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+
+const SOF_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+// Anthropic bills images by area, not by file size: roughly (w*h)/750 tokens
+// after the longest edge is clamped to 1568px. Compression settings therefore
+// do nothing for context cost; only the pixel dimensions do. PNG, JPEG and WebP
+// all have to be read here — recommending WebP and then only measuring PNG
+// would quietly report every WebP screenshot as a guess.
 function imageTokens(base64) {
   try {
-    const head = Buffer.from(base64.slice(0, 200) + '==', 'base64');
-    if (!head.subarray(0, 8).equals(PNG_MAGIC)) return 1400;
-    let w = head.readUInt32BE(16);
-    let h = head.readUInt32BE(20);
+    // A JPEG's size marker can sit well past the header, so decode generously.
+    const buf = Buffer.from(base64.slice(0, 60000) + '==', 'base64');
+    const size = readDimensions(buf);
+    if (!size) return 1400;
+    let [w, h] = size;
     if (!w || !h) return 1400;
     if (Math.max(w, h) > 1568) {
-      const s = 1568 / Math.max(w, h);
-      w *= s;
-      h *= s;
+      const scale = 1568 / Math.max(w, h);
+      w *= scale;
+      h *= scale;
     }
     return Math.round((w * h) / 750);
   } catch {
