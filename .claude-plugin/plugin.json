@@ -19,9 +19,6 @@
   "license": "MIT",
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json",
-  "agents": [
-    "./agents/browser.md"
-  ],
   "userConfig": {
     "screenshot_max_width": {
       "type": "number",
