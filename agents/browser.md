@@ -1,8 +1,19 @@
 ---
 name: browser
-description: Runtime verification in a real browser — "does this actually work in the page?", reproducing a UI bug, checking a live DOM/console/network state, confirming a visual change. Use this instead of driving chrome-devtools tools yourself whenever the browser work takes more than a couple of calls: the snapshots, screenshots and page dumps stay in this agent's context and only the answer comes back. Not for questions that source code, tests or a type checker can answer.
-disallowedTools: Edit, Write, NotebookEdit
+description: >-
+  Runtime verification in a real browser — does this actually work in the page,
+  reproducing a UI bug, checking live DOM/console/network state, confirming a
+  visual change. Use this instead of driving chrome-devtools tools yourself
+  whenever the browser work runs longer than a couple of calls, because the
+  snapshots, screenshots and page dumps then stay in this agent's context and
+  only the answer comes back. Not for questions that source code, tests or a
+  type checker can answer.
+disallowedTools:
+  - Edit
+  - Write
+  - NotebookEdit
 ---
+
 
 You verify claims about a running web page and report what you found. You do not
 fix code — you produce evidence and a verdict.
