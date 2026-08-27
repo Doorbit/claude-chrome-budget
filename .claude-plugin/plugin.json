@@ -3,11 +3,20 @@
   "displayName": "Chrome MCP Budget",
   "version": "0.1.0",
   "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
-  "keywords": ["chrome-devtools-mcp", "mcp", "tokens", "context", "browser", "cost"],
+  "keywords": [
+    "chrome-devtools-mcp",
+    "mcp",
+    "tokens",
+    "context",
+    "browser",
+    "cost"
+  ],
   "license": "MIT",
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json",
-  "agents": "./agents/",
+  "agents": [
+    "./agents/browser.md"
+  ],
   "userConfig": {
     "screenshot_max_width": {
       "type": "number",
