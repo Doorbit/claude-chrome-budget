@@ -59,24 +59,37 @@ you do not use costs nothing.
   and the rest) exist only here. Without it you can capture a heap snapshot but not
   analyse one.
 
-**A guard that redirects rather than forbids.** A `PreToolUse` hook refuses the
-handful of call shapes that are reliably expensive, and every refusal names the
-cheaper call that answers the same question:
+**A guard that corrects the call rather than refusing it.** A `PreToolUse` hook
+rewrites the handful of call shapes that are reliably expensive into the cheap
+equivalent chrome-devtools-mcp already supports, and lets the call through with a
+note saying what changed:
 
-| Refused | Because | Instead |
-|---|---|---|
-| any tool with `includeSnapshot: true` | appends the whole a11y tree (~550 tokens, permanently) | `evaluate_script` returning the specific value |
-| `take_snapshot` without `filePath` | same cost, every time | dump to disk and grep it |
-| `list_console_messages` without `types` | unfiltered dumps are mostly noise | `types: ["error"]`, plus `pageSize` |
-| `take_screenshot` with `fullPage` and no `filePath` | the most expensive image shape there is | `uid` for one element, or `filePath` |
-| `new_page` beyond the page budget | every open tab is appended to every navigation response | `close_page`, or reuse via `navigate_page` |
-| `take_heapsnapshot` without `filePath` | a heap snapshot inline is unusable anyway | write it, then analyse the file |
-| `list_network_requests` unfiltered | the whole log is rarely the question | `resourceTypes`, or `pageSize` + `pageIdx` |
-| `get_network_request` inline, on `chrome-debug` | response bodies average ~2500 tokens | `responseFilePath`, then `jq` |
-| `lighthouse_audit` without `outputDirPath` | reports are far too large to read inline | write it, then read the audits you need |
+| Call | Becomes |
+|---|---|
+| any tool with `includeSnapshot: true` | the flag is dropped |
+| `take_snapshot` without `filePath` | written to `.chrome-budget/` instead of into the conversation |
+| `take_screenshot` with `fullPage`, or anything on `chrome-pixel` | same |
+| `take_heapsnapshot` without `filePath` | same |
+| `get_network_request` inline, on `chrome-debug` | body written to `responseFilePath` |
+| `lighthouse_audit` without `outputDirPath` | report written to disk |
+| `list_console_messages` without `types` | narrowed to errors and warnings, first 50 |
+| `list_network_requests` unfiltered | capped at 50 |
+| `new_page` beyond the page budget | **refused** — nothing can invent which tab to close |
 
-Set `enforcement` to `warn` to get the explanations without the refusals, or `off`
-to disable it.
+Rewriting rather than refusing is deliberate, and it was not the first design. A
+refusal costs a round trip, and the advice it gave — pass `filePath` — walked
+models into a second wall: the server writes only inside the negotiated workspace
+roots, while an agent's natural choice is its own scratchpad. The transcripts show
+what follows. The model complies, gets `Access denied: not within any of the
+configured workspace roots`, concludes that `filePath` does not work, and returns
+to the inline call the guard was trying to prevent. Picking the path here removes
+both problems.
+
+Artefacts land in `<project>/.chrome-budget/`, which the hook creates with a
+`.gitignore` of `*`.
+
+Set `enforcement` to `warn` for the explanations without the rewrites, or `off` to
+disable the hook.
 
 **Two subagents.** They absorb the snapshots, screenshots and traces in their own
 context and return a finding, which is what actually defuses the 805×.

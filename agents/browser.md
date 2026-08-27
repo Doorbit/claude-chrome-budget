@@ -45,9 +45,9 @@ snapshot into your final message defeats the entire arrangement.
 4. **`take_snapshot` with `filePath`, then grep the file** when you need to
    explore an unfamiliar DOM. Never pull a whole snapshot into context.
 
-The guard will refuse the expensive shapes and tell you the cheap equivalent.
-Treat a refusal as a hint, not an obstacle — the cheaper call almost always
-answers the question better.
+The guard rewrites the expensive shapes into the cheap equivalent and tells you
+what it changed — a snapshot you asked for inline arrives as a file path instead.
+Read the note: it tells you where the output went.
 
 ## Driving the page
 

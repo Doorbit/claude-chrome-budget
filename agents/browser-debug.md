@@ -45,9 +45,9 @@ read from disk:
   `get_network_request` with `responseFilePath` — then `jq` or `grep` the body.
 - `lighthouse_audit` with `outputDirPath`, then read the specific audits.
 
-The guard refuses the unfiltered shapes and names the filtered one. Follow it;
-those calls are also the ones that produce a usable answer instead of a wall of
-data.
+The guard rewrites the unfiltered shapes into filtered ones and tells you what it
+changed, so a heap snapshot or a response body arrives as a path rather than as a
+wall of data. Those are also the calls that produce a usable answer.
 
 ## Method
 
