@@ -76,16 +76,34 @@ it whenever browser work runs longer than a couple of calls.
 ## Install
 
 ```bash
-claude plugin marketplace add <this-repo>
-claude plugin install chrome-budget@chrome-budget
+claude plugin marketplace add Doorbit/claude-chrome-budget
+claude plugin install chrome-budget@chrome-budget --scope user \
+  --config screenshot_max_width=1024 --config screenshot_max_height=768 \
+  --config max_open_pages=8 --config enforcement=block
 ```
 
-Installing at user scope applies it to every project on the machine. Projects can
-still layer their own rules on top; nothing here is project-specific.
+User scope applies it to every project on the machine. Projects can still layer
+their own rules on top; nothing here is project-specific.
 
-If you already have a `chrome-devtools` server configured at user or project scope,
-remove it — otherwise you end up running two browsers with different settings and
-the guard only covers one of them.
+Then remove any `chrome-devtools` server you already have, or you end up running a
+second browser that the guard does not cover and whose screenshots are uncapped:
+
+```bash
+claude mcp remove chrome-devtools -s user
+claude mcp remove chrome-devtools -s local   # from each project that has one
+claude mcp list                              # should report no conflicting scopes
+```
+
+Verify the install:
+
+```bash
+claude plugin details chrome-budget
+```
+
+Expect one agent (`browser`), one `PreToolUse` hook, and two MCP servers, at a
+standing context cost of roughly 150 tokens — the agent's description in the
+subagent list. Everything else is resolved at runtime and costs nothing until
+used.
 
 ## Configure
 
