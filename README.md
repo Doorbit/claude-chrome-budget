@@ -143,8 +143,14 @@ claude plugin details chrome-budget
 Expect two agents (`browser`, `browser-debug`), one `PreToolUse` hook, and three MCP
 servers, at a
 standing context cost of a few hundred tokens — the agents' descriptions in the
-subagent list. Everything else is resolved at runtime and costs nothing until
-used.
+subagent list. The Chrome processes launch lazily, so a server you do not use
+costs nothing.
+
+The MCP tool schemas are a separate question. Claude Code resolves them on demand
+where tool search is available, which is why `claude plugin details` reports them
+as not counted — check that on your own setup before assuming it. Without it,
+three servers mean three sets of tool definitions on every request, and you would
+want `--slim` or fewer servers instead.
 
 ## Where the files go
 

@@ -60,11 +60,20 @@ const isDebugServer = server.includes('debug');
 const next = { ...args };
 const notes = [];
 let changed = false;
+// In warn mode nothing is rewritten, so nothing may be described as done. An
+// earlier version emitted the applied-text regardless, telling the model a file
+// had been written that never was — and allocating the path created the output
+// directory as a side effect of a mode documented as explaining only.
+const applying = MODE !== 'warn';
 
 /** Record a correction. Every rule runs; nothing short-circuits. */
-function correct(apply, message) {
-  apply(next);
-  notes.push(message);
+function correct(apply, applied, advice) {
+  if (applying) {
+    apply(next);
+    notes.push(applied);
+  } else {
+    notes.push(advice);
+  }
   changed = true;
 }
 
@@ -75,6 +84,7 @@ function correct(apply, message) {
  * configured workspace roots" — so pick the path here instead of describing it.
  */
 function outputPath(name, extension) {
+  if (!applying) return null;
   const cwd = input.cwd;
   const base = cwd && isAbsolute(cwd) ? cwd : tmpdir();
   const dir = join(base, OUT_DIR_NAME);
@@ -84,69 +94,75 @@ function outputPath(name, extension) {
     const ignore = join(dir, '.gitignore');
     if (!existsSync(ignore)) writeFileSync(ignore, '*\n');
   } catch {
-    return join(tmpdir(), `${name}-${Date.now()}.${extension}`);
+    return join(tmpdir(), `${name}-${Date.now()}${extension}`);
   }
-  return join(dir, `${name}-${Date.now()}.${extension}`);
+  return join(dir, `${name}-${Date.now()}${extension}`);
 }
 
 if (args.includeSnapshot === true) {
   correct((a) => { delete a.includeSnapshot; },
     'Dropped includeSnapshot: it appends the whole accessibility tree (~550 tokens, and it stays ' +
     'in context for the rest of the session). To see what changed on the page, call ' +
-    'evaluate_script and return just the values you care about.');
+    'evaluate_script and return just the values you care about.',
+    'This call carries includeSnapshot, which appends the whole accessibility tree (~550 tokens, ' +
+    're-sent every following request). Drop it and read what you need with evaluate_script.');
 }
 
 if (tool === 'take_snapshot' && !next.filePath) {
-  const filePath = outputPath('snapshot', 'txt');
+  // The server rewrites the extension to match the tool, so these have to be
+  // the extensions it actually enforces — otherwise the path named here is not
+  // the path the file ends up at, and the model greps something that is not there.
+  const filePath = outputPath('snapshot', '.txt');
   correct((a) => { a.filePath = filePath; },
     `Snapshot written to ${filePath} instead of into the conversation, where it would have cost ` +
     '~550 tokens on every following request. Grep that file for the part you need. Usually the ' +
-    'better move is evaluate_script returning just the value you are after.');
+    'better move is evaluate_script returning just the value you are after.',
+    'A snapshot without filePath costs ~550 tokens on every following request. Pass filePath and ' +
+    'grep the file, or better, ask evaluate_script for the one value you need.');
 }
 
 if (tool === 'take_screenshot' && !next.filePath && (next.fullPage === true || isPixelServer)) {
-  const extension = next.format === 'jpeg' ? 'jpg' : (next.format || 'png');
+  const extension = next.format === 'jpeg' ? '.jpeg' : next.format === 'webp' ? '.webp' : '.png';
   const filePath = outputPath('screenshot', extension);
+  const why = isPixelServer
+    ? 'Full-resolution images belong in a diff script, not in a context window — compare the files and report the numbers.'
+    : 'Full-page images are the most expensive there are. If you need to look at the page yourself, take a plain viewport screenshot; if you need one element, pass uid.';
   correct((a) => { a.filePath = filePath; },
-    `Screenshot written to ${filePath} rather than into the conversation. ` +
-    (isPixelServer
-      ? 'Full-resolution images belong in a diff script, not in a context window — compare the files and report the numbers.'
-      : 'Full-page images are the most expensive there are. If you need to look at the page yourself, take a plain viewport screenshot; if you need one element, pass uid.'));
-}
-
-if (tool === 'take_heapsnapshot' && !next.filePath) {
-  const filePath = outputPath('heap', 'heapsnapshot');
-  correct((a) => { a.filePath = filePath; },
-    `Heap snapshot written to ${filePath}. Analyse it with get_heapsnapshot_summary, ` +
-    'query_heapsnapshot_objects or compare_heapsnapshots — those take file paths and return only ' +
-    'the slice you ask for. They need the chrome-debug server, which enables memory debugging.');
+    `Screenshot written to ${filePath} rather than into the conversation. ${why}`,
+    `This screenshot would go into the conversation at full cost. ${why}`);
 }
 
 if (tool === 'lighthouse_audit' && !next.outputDirPath) {
-  const outputDirPath = outputPath('lighthouse', 'dir').replace(/\.dir$/, '');
+  const outputDirPath = outputPath('lighthouse', '');
   correct((a) => { a.outputDirPath = outputDirPath; },
     `Report written to ${outputDirPath}. Read the specific audits you are investigating from ` +
-    'there; a full lighthouse report is far too large to read inline.');
+    'there; a full lighthouse report is far too large to read inline.',
+    'A lighthouse report is far too large to read inline. Pass outputDirPath and read the ' +
+    'specific audits you are investigating.');
 }
 
 if (tool === 'get_network_request' && isDebugServer && !next.responseFilePath) {
-  const responseFilePath = outputPath('response', 'txt');
+  const responseFilePath = outputPath('response', '.network-response');
   correct((a) => { a.responseFilePath = responseFilePath; },
     `Response body written to ${responseFilePath} — bodies average ~2500 tokens here and the ` +
     'large ones are far worse. Pull out what matters with jq or grep. The default chrome server ' +
-    'still allows inline bodies for the occasional small response.');
+    'still allows inline bodies for the occasional small response.',
+    'Response bodies average ~2500 tokens on this server. Pass responseFilePath and pull out ' +
+    'what matters with jq or grep.');
 }
 
 if (tool === 'list_console_messages' && !next.types && !next.serviceWorkerId) {
   correct((a) => { a.types = ['error', 'warn']; a.pageSize = a.pageSize ?? 50; },
     'Narrowed to errors and warnings, first 50. An unfiltered console dump is mostly noise. ' +
-    'Call again with different types (or pageIdx) if you need more.');
+    'Call again with different types (or pageIdx) if you need more.',
+    'An unfiltered console dump is mostly noise. Pass types (e.g. ["error"]) and pageSize.');
 }
 
 if (tool === 'list_network_requests' && !next.resourceTypes && next.pageSize === undefined) {
   correct((a) => { a.pageSize = 50; },
     'Capped the listing at 50 requests. Narrow it further with resourceTypes ' +
-    '(e.g. ["fetch","xhr"]) or page through with pageIdx.');
+    '(e.g. ["fetch","xhr"]) or page through with pageIdx.',
+    'An unfiltered request listing is rarely the question. Pass resourceTypes or pageSize.');
 }
 
 if (!changed) process.exit(0);
@@ -160,7 +176,7 @@ if (!changed) process.exit(0);
 process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'PreToolUse',
-    ...(MODE === 'warn' ? {} : { updatedInput: next }),
+    ...(applying ? { updatedInput: next } : {}),
     additionalContext: notes.join(' '),
   },
 }));

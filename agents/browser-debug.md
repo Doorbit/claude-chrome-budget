@@ -46,8 +46,9 @@ read from disk:
 - `lighthouse_audit` with `outputDirPath`, then read the specific audits.
 
 The guard rewrites the unfiltered shapes into filtered ones and tells you what it
-changed, so a heap snapshot or a response body arrives as a path rather than as a
-wall of data. Those are also the calls that produce a usable answer.
+changed, so a response body arrives as a path rather than as a wall of data.
+`take_heapsnapshot` requires `filePath` itself, so that one is on you. These are
+also the calls that produce a usable answer.
 
 ## Method
 
