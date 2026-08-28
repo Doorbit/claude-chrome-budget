@@ -74,7 +74,7 @@ note saying what changed:
 | `lighthouse_audit` without `outputDirPath` | report written to disk |
 | `list_console_messages` without `types` | narrowed to errors and warnings, first 50 |
 | `list_network_requests` unfiltered | capped at 50 |
-| `new_page` beyond the page budget | **refused** — nothing can invent which tab to close |
+| `new_page` beyond the page budget | allowed, with a note — see below |
 
 Rewriting rather than refusing is deliberate, and it was not the first design. A
 refusal costs a round trip, and the advice it gave — pass `filePath` — walked
@@ -87,6 +87,21 @@ both problems.
 
 Artefacts land in `<project>/.chrome-budget/`, which the hook creates with a
 `.gitignore` of `*`.
+
+The page budget is the one rule that only ever warns. Its count cannot be made
+accurate — one browser is shared by every agent in a session, and a page closed by
+anything other than `close_page` is invisible to a hook — and no rewrite can invent
+which tab was meant to go. An earlier version refused, and subagents inheriting a
+count they never spent were left with no way out. `--isolated` does the real work
+here anyway: it took the measured tab count from an average of 11.5 to 2.4.
+
+**State is per agent, not per session.** A subagent's tool calls arrive with the
+parent's `session_id` and even the parent's `transcript_path`, but with an
+`agent_id` of its own; ledgers are keyed on both. Each agent has its own context,
+so each agent gets its own budget.
+
+The guard never grants or withholds a permission — it returns a corrected input
+and a note, and leaves the permission decision where it belongs.
 
 Set `enforcement` to `warn` for the explanations without the rewrites, or `off` to
 disable the hook.

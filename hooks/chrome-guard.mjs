@@ -45,13 +45,13 @@ function emit(payload) {
 /** Let the call through with a corrected input, and say what changed. */
 function rewrite(updatedInput, note) {
   if (MODE === 'warn') emit({ additionalContext: note });
-  emit({ permissionDecision: 'allow', updatedInput, additionalContext: note });
+  emit({ updatedInput, additionalContext: note });
 }
 
-/** Only for calls with no safe rewrite. */
-function refuse(reason) {
-  if (MODE === 'warn') emit({ additionalContext: reason });
-  emit({ permissionDecision: 'deny', permissionDecisionReason: reason });
+/** Informational only: deliberately no permissionDecision. A hook that exists to
+ *  count tokens has no business granting or withholding a permission. */
+function note(text) {
+  emit({ additionalContext: text });
 }
 
 /**
@@ -74,6 +74,20 @@ function outputPath(cwd, tool, extension) {
   return join(dir, `${tool}-${Date.now()}.${extension}`);
 }
 
+/**
+ * A subagent's tool calls arrive with the parent's session_id and even the
+ * parent's transcript_path, but with an agent_id of their own. Keying state by
+ * the session alone therefore pools the parent and every subagent into one
+ * ledger — which is how a subagent inherits a budget it never spent, or gets
+ * told it already has a file it has never seen. Each agent has its own context,
+ * so each agent gets its own ledger.
+ */
+function ledgerKey(input) {
+  const session = String(input.session_id || 'nosession');
+  const agent = input.agent_id ? `-agent-${input.agent_id}` : '';
+  return `${session}${agent}`.replace(/[^\w.-]/g, '_');
+}
+
 function stateFile(sessionId) {
   const dir = process.env.CLAUDE_PLUGIN_DATA || join(tmpdir(), 'chrome-budget');
   try {
@@ -81,7 +95,7 @@ function stateFile(sessionId) {
   } catch {
     /* a failed write below is handled by falling back to no page budget */
   }
-  return join(dir, `pages-${(sessionId || 'nosession').replace(/[^\w.-]/g, '_')}.json`);
+  return join(dir, `pages-${sessionId}.json`);
 }
 
 /** Best-effort tab ledger. Drift is harmless: the budget is generous and the
@@ -185,18 +199,24 @@ if (tool === 'list_network_requests' && !args.resourceTypes && args.pageSize ===
     '(e.g. ["fetch","xhr"]) or page through with pageIdx.');
 }
 
-// No rewrite can invent which page to close, so this one stays a refusal.
+// The page budget is a note, never a refusal, for two reasons. The count cannot
+// be made accurate — one browser is shared by every agent in the session, and a
+// page closed by anything other than close_page is invisible here — and there is
+// no rewrite that can invent which tab to close. Refusing on a number that may
+// be wrong strands an agent with no way out, which costs far more than the tabs.
+// --isolated already does the real work: it took the measured tab count from an
+// average of 11.5 to 2.4, well under any budget worth setting.
+const ledger = ledgerKey(input);
 if (tool === 'new_page') {
-  const openNow = adjustOpenPages(input.session_id, +1);
+  const openNow = adjustOpenPages(ledger, +1);
   if (openNow >= MAX_OPEN_PAGES) {
-    adjustOpenPages(input.session_id, -1); // the call is refused, so do not count it
-    refuse(
-      `${openNow} pages are already open. Every navigation tool appends a list of all open tabs to ` +
-      `its response, so each abandoned tab quietly taxes every later browser call. Close one you ` +
-      `no longer need with close_page, or reuse the current page with navigate_page.`);
+    note(
+      `${openNow} pages look to be open in this agent. Every navigation tool appends a list of all ` +
+      `open tabs to its response, so each abandoned tab taxes every later browser call. Close the ` +
+      `ones you are done with using close_page.`);
   }
 } else if (tool === 'close_page') {
-  adjustOpenPages(input.session_id, -1);
+  adjustOpenPages(ledger, -1);
 }
 
 process.exit(0);
