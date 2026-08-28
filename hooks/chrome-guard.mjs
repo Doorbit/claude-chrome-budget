@@ -59,7 +59,10 @@ const isDebugServer = server.includes('debug');
 
 const next = { ...args };
 const notes = [];
-let changed = false;
+// Two separate questions: is there anything to say, and was the input actually
+// changed. Advice-only rules must not send updatedInput back, or a rule that
+// only wants to suggest something quietly resubmits the arguments as its own.
+let mutated = false;
 // In warn mode nothing is rewritten, so nothing may be described as done. An
 // earlier version emitted the applied-text regardless, telling the model a file
 // had been written that never was — and allocating the path created the output
@@ -71,10 +74,10 @@ function correct(apply, applied, advice) {
   if (applying) {
     apply(next);
     notes.push(applied);
+    mutated = true;
   } else {
     notes.push(advice);
   }
-  changed = true;
 }
 
 /**
@@ -152,20 +155,26 @@ if (tool === 'get_network_request' && isDebugServer && !next.responseFilePath) {
 }
 
 if (tool === 'list_console_messages' && !next.types && !next.serviceWorkerId) {
-  correct((a) => { a.types = ['error', 'warn']; a.pageSize = a.pageSize ?? 50; },
-    'Narrowed to errors and warnings, first 50. An unfiltered console dump is mostly noise. ' +
-    'Call again with different types (or pageIdx) if you need more.',
-    'An unfiltered console dump is mostly noise. Pass types (e.g. ["error"]) and pageSize.');
+  // types only. The server already pages at 20 by default, so injecting a
+  // pageSize of 50 made this call two and a half times larger than doing
+  // nothing — measured at 288 tokens against 31 for a types filter alone.
+  // A correction that costs more than the thing it corrects is worse than none.
+  correct((a) => { a.types = ['error', 'warn']; },
+    'Narrowed to errors and warnings. An unfiltered console dump is mostly noise. ' +
+    'Call again with different types, or pageSize/pageIdx, if you need more.',
+    'An unfiltered console dump is mostly noise. Pass types, e.g. ["error"].');
 }
 
 if (tool === 'list_network_requests' && !next.resourceTypes && next.pageSize === undefined) {
-  correct((a) => { a.pageSize = 50; },
-    'Capped the listing at 50 requests. Narrow it further with resourceTypes ' +
-    '(e.g. ["fetch","xhr"]) or page through with pageIdx.',
-    'An unfiltered request listing is rarely the question. Pass resourceTypes or pageSize.');
+  // Advice only, no rewrite: the guard cannot guess which resource types the
+  // task cares about, and the server's own default page size of 20 is already
+  // tighter than anything worth injecting here.
+  notes.push(
+    'This request listing is unfiltered. resourceTypes (e.g. ["fetch","xhr"]) usually answers ' +
+    'the question in a fraction of the output; pageIdx pages through the rest.');
 }
 
-if (!changed) process.exit(0);
+if (!notes.length) process.exit(0);
 
 // `updatedInput` is honoured on its own, without a permissionDecision —
 // verified in a live session against Claude Code 2.1.238. Deliberately not
@@ -176,7 +185,7 @@ if (!changed) process.exit(0);
 process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'PreToolUse',
-    ...(applying ? { updatedInput: next } : {}),
+    ...(mutated ? { updatedInput: next } : {}),
     additionalContext: notes.join(' '),
   },
 }));

@@ -72,8 +72,8 @@ note saying what changed:
 | `take_heapsnapshot` without `filePath` | same |
 | `get_network_request` inline, on `chrome-debug` | body written to `responseFilePath` |
 | `lighthouse_audit` without `outputDirPath` | report written to disk |
-| `list_console_messages` without `types` | narrowed to errors and warnings, first 50 |
-| `list_network_requests` unfiltered | capped at 50 |
+| `list_console_messages` without `types` | narrowed to errors and warnings |
+| `list_network_requests` unfiltered | a note suggesting `resourceTypes` — no rewrite |
 
 Rewriting rather than refusing is deliberate, and it was not the first design. A
 refusal costs a round trip, and the advice it gave — pass `filePath` — walked
