@@ -1,7 +1,7 @@
 {
   "name": "chrome-budget",
   "displayName": "Chrome MCP Budget",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
   "author": {
     "name": "Doorbit"
@@ -34,19 +34,11 @@
       "max": 4000,
       "default": 768
     },
-    "max_open_pages": {
-      "type": "number",
-      "title": "Open page budget",
-      "description": "Navigation tools append a list of every open tab to their response. Once this many pages are open, opening another is refused until one is closed.",
-      "min": 1,
-      "max": 50,
-      "default": 8
-    },
     "enforcement": {
       "type": "string",
       "title": "Enforcement level",
-      "description": "'block' refuses expensive calls and explains the cheap alternative. 'warn' allows them and appends the same explanation. 'off' disables the guard entirely.",
-      "default": "block"
+      "description": "'correct' rewrites expensive calls into their cheap equivalent and explains what changed. 'warn' explains without rewriting. 'off' disables the guard. Nothing is ever refused. ('block' is accepted as a synonym for 'correct'.)",
+      "default": "correct"
     }
   }
 }

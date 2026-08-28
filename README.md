@@ -74,7 +74,6 @@ note saying what changed:
 | `lighthouse_audit` without `outputDirPath` | report written to disk |
 | `list_console_messages` without `types` | narrowed to errors and warnings, first 50 |
 | `list_network_requests` unfiltered | capped at 50 |
-| `new_page` beyond the page budget | allowed, with a note — see below |
 
 Rewriting rather than refusing is deliberate, and it was not the first design. A
 refusal costs a round trip, and the advice it gave — pass `filePath` — walked
@@ -88,20 +87,20 @@ both problems.
 Artefacts land in `<project>/.chrome-budget/`, which the hook creates with a
 `.gitignore` of `*`.
 
-The page budget is the one rule that only ever warns. Its count cannot be made
-accurate — one browser is shared by every agent in a session, and a page closed by
-anything other than `close_page` is invisible to a hook — and no rewrite can invent
-which tab was meant to go. An earlier version refused, and subagents inheriting a
-count they never spent were left with no way out. `--isolated` does the real work
-here anyway: it took the measured tab count from an average of 11.5 to 2.4.
+Every rule that applies is applied, and the corrected call goes through. An
+earlier version emitted on the first match, so a screenshot carrying a stray
+`includeSnapshot` had the flag stripped and then escaped the rule that would have
+written it to disk — the most expensive call shape slipping through the narrowest
+gap.
 
-**State is per agent, not per session.** A subagent's tool calls arrive with the
-parent's `session_id` and even the parent's `transcript_path`, but with an
-`agent_id` of its own; ledgers are keyed on both. Each agent has its own context,
-so each agent gets its own budget.
-
-The guard never grants or withholds a permission — it returns a corrected input
-and a note, and leaves the permission decision where it belongs.
+The guard holds no state and never grants or withholds a permission. It returns a
+corrected input and a note, and leaves the permission decision where it belongs.
+An earlier version tracked open tabs and refused past a budget; that count could
+not be made accurate — one browser is shared by every agent in a session, and a
+page closed by anything other than `close_page` is invisible to a hook — and
+refusing on a number that may be wrong left subagents with no way out. `--isolated`
+does the real work there anyway: it took the measured tab count from an average of
+11.5 to 2.4.
 
 Set `enforcement` to `warn` for the explanations without the rewrites, or `off` to
 disable the hook.
@@ -120,8 +119,7 @@ context and return a finding, which is what actually defuses the 805×.
 ```bash
 claude plugin marketplace add Doorbit/claude-chrome-budget
 claude plugin install chrome-budget@chrome-budget --scope user \
-  --config screenshot_max_width=1024 --config screenshot_max_height=768 \
-  --config max_open_pages=8 --config enforcement=block
+  --config screenshot_max_width=1024 --config screenshot_max_height=768
 ```
 
 User scope applies it to every project on the machine. Projects can still layer
@@ -167,8 +165,7 @@ Via `claude plugin install --config`, or the plugin's settings:
 |---|---|---|
 | `screenshot_max_width` | 1024 | Downscale threshold. The only setting that reduces image tokens. |
 | `screenshot_max_height` | 768 | Same, for height. Smaller scale factor wins. |
-| `max_open_pages` | 8 | Page budget before `new_page` is refused. |
-| `enforcement` | `block` | `block`, `warn` or `off`. |
+| `enforcement` | `correct` | `correct` rewrites, `warn` only explains, `off` disables. Nothing is refused. |
 
 ## Verify it is working
 
