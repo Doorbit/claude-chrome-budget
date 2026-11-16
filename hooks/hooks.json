@@ -18,7 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/idle-browser.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/idle-browser.mjs\"",
+            "timeout": 5
           }
         ]
       }

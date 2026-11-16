@@ -1,16 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   responseText,
   listedPages,
-  browserIsIdle,
+  idleReason,
   serverOf,
   parseProcessTable,
   findBrowser,
   run,
-} from '../hooks/idle-browser.mjs';
+  PS_ARGS,
+  PS_TIMEOUT_MS,
+} from '../hooks/idle-browser-core.mjs';
 
 const LAST_PAGE = 'The last open page cannot be closed. It is fine to keep it open.';
+const reason = (text, pageId) => idleReason(text, pageId)?.reason ?? null;
 
 // --- responseText -----------------------------------------------------------
 
@@ -23,51 +31,75 @@ test('responseText reads an object that wraps the content array', () => {
   assert.match(responseText({ content: [{ type: 'text', text: '## Pages\n1: about:blank' }] }), /## Pages/);
 });
 
+test('responseText reads content and ignores structuredContent beside it', () => {
+  const response = {
+    content: [{ type: 'text', text: '## Pages\n1: about:blank [selected]' }],
+    structuredContent: { pages: [{ id: 1, title: '7: Studio' }] },
+  };
+  assert.equal(reason(responseText(response), 1), 'blank');
+});
+
 test('responseText decodes a JSON-encoded response string', () => {
   const encoded = JSON.stringify([{ type: 'text', text: '## Pages\n1: about:blank [selected]' }]);
-  assert.deepEqual(listedPages(responseText(encoded)), ['about:blank [selected]']);
+  assert.deepEqual(listedPages(responseText(encoded)), [{ id: 1, entry: 'about:blank [selected]' }]);
 });
 
 // --- listedPages ------------------------------------------------------------
 
 test('listedPages returns the entries of the Pages section only', () => {
   const text = 'Note: x\n## Pages\n1: about:blank\n2: Foo (https://a.test/) [selected]\n## Extension Pages\n3: ext';
-  assert.deepEqual(listedPages(text), ['about:blank', 'Foo (https://a.test/) [selected]']);
+  assert.deepEqual(listedPages(text), [{ id: 1, entry: 'about:blank' }, { id: 2, entry: 'Foo (https://a.test/) [selected]' }]);
 });
 
 test('listedPages is null without a Pages section', () => {
   assert.equal(listedPages('Successfully navigated.'), null);
 });
 
-// --- browserIsIdle ----------------------------------------------------------
+// --- idleReason -------------------------------------------------------------
 
 test('a browser with nothing but about:blank left is idle', () => {
-  assert.equal(browserIsIdle('## Pages\n1: about:blank [selected]'), true);
+  assert.equal(reason('## Pages\n1: about:blank [selected]', 2), 'blank');
 });
 
 test('several blank tabs are still idle', () => {
-  assert.equal(browserIsIdle('## Pages\n1: about:blank\n4: about:blank [selected]'), true);
+  assert.equal(reason('## Pages\n1: about:blank\n4: about:blank [selected]', 2), 'blank');
 });
 
 test('a blank tab in an isolated context is idle', () => {
-  assert.equal(browserIsIdle('## Pages\n2: about:blank [selected] isolatedContext=login'), true);
+  assert.equal(reason('## Pages\n2: about:blank [selected] isolatedContext=login', 3), 'blank');
+});
+
+test('a blank tab in an isolated context whose name has a space is idle', () => {
+  assert.equal(reason('## Pages\n2: about:blank [selected] isolatedContext=my login', 3), 'blank');
 });
 
 test('a page another agent still has open keeps the browser', () => {
-  assert.equal(browserIsIdle('## Pages\n1: about:blank\n2: Studio (https://integ.test/) [selected]'), false);
+  assert.equal(reason('## Pages\n1: about:blank\n2: Studio (https://integ.test/) [selected]', 3), null);
 });
 
 test('a page titled about:blank is not a blank page', () => {
-  assert.equal(browserIsIdle('## Pages\n1: about:blank (https://a.test/) [selected]'), false);
+  assert.equal(reason('## Pages\n1: about:blank (https://a.test/) [selected]', 2), null);
 });
 
 test('asking to close the only page left means the agent is done with it', () => {
-  assert.equal(browserIsIdle(`${LAST_PAGE}\n## Pages\n1: Studio (https://integ.test/) [selected]`), true);
+  const idle = idleReason(`${LAST_PAGE}\n## Pages\n1: Studio (https://integ.test/) [selected]`, 1);
+  assert.deepEqual(idle, { reason: 'last-page', page: 'Studio (https://integ.test/)' });
+});
+
+test("a refused close of some other page id does not cost the only page its browser", () => {
+  assert.equal(reason(`${LAST_PAGE}\n## Pages\n1: Studio (https://integ.test/) [selected]`, 7), null);
+  assert.equal(reason(`${LAST_PAGE}\n## Pages\n1: Studio (https://integ.test/) [selected]`, undefined), null);
+});
+
+test('the refusal never applies while two pages are listed', () => {
+  for (const id of [1, 2]) {
+    assert.equal(reason(`${LAST_PAGE}\n## Pages\n1: Docs (https://a.test/)\n2: Studio (https://integ.test/) [selected]`, id), null);
+  }
 });
 
 test('no page listing means no decision', () => {
-  assert.equal(browserIsIdle(LAST_PAGE), false);
-  assert.equal(browserIsIdle(''), false);
+  assert.equal(reason(LAST_PAGE, 1), null);
+  assert.equal(reason('', 1), null);
 });
 
 // --- serverOf ---------------------------------------------------------------
@@ -152,6 +184,29 @@ test('findBrowser refuses to guess between two matching servers', () => {
   assert.equal(findBrowser(rows, 151, 'chrome'), null);
 });
 
+test('findBrowser refuses to guess between two browsers under one server', () => {
+  const rows = table().concat([{ pid: 1105, ppid: 102, args: CHROME }]);
+  assert.equal(findBrowser(rows, 151, 'chrome'), null);
+});
+
+test("a user's own chrome-devtools-mcp server is not taken for the pixel server", () => {
+  const rows = table({ ownChrome: ['chrome-pixel'] }).concat([{ pid: 140, ppid: 100, args: 'npm exec chrome-devtools-mcp@latest' },
+    { pid: 141, ppid: 100, args: '/bin/zsh -c ps -A | grep chrome-devtools-mcp' }]);
+  assert.equal(findBrowser(rows, 151, 'chrome-pixel'), 1112);
+});
+
+test('findBrowser ends on a cycle in the process table', () => {
+  const rows = [{ pid: 700, ppid: 701, args: 'a' }, { pid: 701, ppid: 700, args: 'b' }];
+  assert.equal(findBrowser(rows, 700, 'chrome'), null);
+});
+
+test('the process table is read at full width, briefly', () => {
+  // Claude Code sets COLUMNS for hooks; procps on Linux would then cut the
+  // Chrome command line before --remote-debugging-pipe.
+  assert.ok(PS_ARGS.includes('-ww'));
+  assert.ok(PS_TIMEOUT_MS > 0 && PS_TIMEOUT_MS <= 3000);
+});
+
 // --- run --------------------------------------------------------------------
 
 function hookInput(text, tool = 'mcp__plugin_chrome-budget_chrome__close_page') {
@@ -207,4 +262,31 @@ test('run stays quiet when the process table cannot be read', () => {
   const d = deps({ processTable: () => { throw new Error('ps: not found'); } });
   assert.equal(run(hookInput('## Pages\n1: about:blank [selected]'), d), null);
   assert.deepEqual(d.killed, []);
+});
+
+test('run names the page that went with the browser when the agent closed the only one', () => {
+  const d = deps();
+  const output = run(hookInput(`${LAST_PAGE}\n## Pages\n2: Studio (https://integ.test/) [selected]`), d);
+  assert.deepEqual(d.killed, [1102]);
+  assert.match(output.hookSpecificOutput.additionalContext, /Studio \(https:\/\/integ\.test\/\) could not be closed on its own/);
+});
+
+// --- entry point --------------------------------------------------------------
+
+const ENTRY = fileURLToPath(new URL('../hooks/idle-browser.mjs', import.meta.url));
+
+test('the hook entry exits quietly on input it cannot read, also through a symlink', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'idle-browser-'));
+  try {
+    const linked = join(dir, 'idle-browser.mjs');
+    symlinkSync(ENTRY, linked);
+    for (const script of [ENTRY, linked]) {
+      const result = spawnSync(process.execPath, [script], { input: 'not json', encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout, '');
+      assert.equal(result.stderr, '');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

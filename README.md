@@ -116,7 +116,10 @@ notices the browser is gone and launches a fresh one on the next call, so nothin
 breaks; what is lost is the state — the next call starts from a clean profile and
 has to log in again. The hook only ever touches the browser of the server that
 answered, in its own session, and does nothing when it cannot tell which one that
-is. Set `close_idle_browser` to `false` to keep idle browsers around.
+is. One gap remains: a browser is shared by every agent in a session, and a page
+another agent opens in the half second between `close_page` and the hook goes down
+with it — that agent's next call then reports the restart. Set `close_idle_browser`
+to `false` to keep idle browsers around.
 
 The servers also run with `--no-usage-statistics`. With statistics on, every server
 starts a separate telemetry watchdog to report usage to Google — three processes per

@@ -21,3 +21,9 @@ test('the idle-browser hook runs after close_page on every plugin server', () =>
   }
   assert.equal(matcher.test('mcp__plugin_chrome-budget_chrome__navigate_page'), false);
 });
+
+test('the idle-browser hook cannot hold up a turn for long', () => {
+  const entry = hooks.PostToolUse.find((h) => h.hooks.some((c) => c.command.includes('idle-browser.mjs')));
+  const command = entry.hooks.find((c) => c.command.includes('idle-browser.mjs'));
+  assert.ok(Number.isFinite(command.timeout) && command.timeout <= 10, 'no short timeout on the hook');
+});
