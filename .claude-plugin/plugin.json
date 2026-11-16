@@ -1,7 +1,7 @@
 {
   "name": "chrome-budget",
   "displayName": "Chrome MCP Budget",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
   "author": {
     "name": "Doorbit"
@@ -39,6 +39,12 @@
       "title": "Enforcement level",
       "description": "'correct' rewrites expensive calls into their cheap equivalent and explains what changed. 'warn' explains without rewriting. 'off' disables the guard. Nothing is ever refused. ('block' is accepted as a synonym for 'correct'.)",
       "default": "correct"
+    },
+    "close_idle_browser": {
+      "type": "boolean",
+      "title": "Close idle browsers",
+      "description": "Close a server's Chrome once close_page leaves nothing but blank tabs. The next browser call starts a fresh one; logins and storage are lost. Off keeps the browser, and roughly 800 MB of RAM, until the session ends.",
+      "default": true
     }
   }
 }
