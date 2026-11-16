@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, symlinkSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, symlinkSync, rmSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,6 +79,11 @@ test('a page another agent still has open keeps the browser', () => {
 
 test('a page titled about:blank is not a blank page', () => {
   assert.equal(reason('## Pages\n1: about:blank (https://a.test/) [selected]', 2), null);
+});
+
+test('a page cannot title itself into looking blank', () => {
+  assert.equal(reason('## Pages\n1: about:blank isolatedContext=x (https://evil.test/) [selected]', 2), null);
+  assert.equal(reason('## Pages\n1: about:blank [selected] (https://evil.test/)', 2), null);
 });
 
 test('asking to close the only page left means the agent is done with it', () => {
@@ -190,14 +195,19 @@ test('findBrowser refuses to guess between two browsers under one server', () =>
 });
 
 test("a user's own chrome-devtools-mcp server is not taken for the pixel server", () => {
-  const rows = table({ ownChrome: ['chrome-pixel'] }).concat([{ pid: 140, ppid: 100, args: 'npm exec chrome-devtools-mcp@latest' },
+  const rows = table({ ownChrome: ['chrome-pixel'] }).concat([{ pid: 140, ppid: 100, args: 'npm exec chrome-devtools-mcp@latest --isolated' },
     { pid: 141, ppid: 100, args: '/bin/zsh -c ps -A | grep chrome-devtools-mcp' }]);
   assert.equal(findBrowser(rows, 151, 'chrome-pixel'), 1112);
 });
 
 test('findBrowser ends on a cycle in the process table', () => {
-  const rows = [{ pid: 700, ppid: 701, args: 'a' }, { pid: 701, ppid: 700, args: 'b' }];
-  assert.equal(findBrowser(rows, 700, 'chrome'), null);
+  // In a child process: a synchronous endless loop would otherwise hang the
+  // whole run, since a node:test timeout cannot interrupt it.
+  const core = new URL('../hooks/idle-browser-core.mjs', import.meta.url).href;
+  const script = `import(${JSON.stringify(core)}).then((m) => process.stdout.write(String(m.findBrowser(` +
+    `[{ pid: 700, ppid: 701, args: 'a' }, { pid: 701, ppid: 700, args: 'b' }], 700, 'chrome'))))`;
+  const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(result.stdout, 'null', result.error?.message ?? result.stderr);
 });
 
 test('the process table is read at full width, briefly', () => {
@@ -272,17 +282,88 @@ test('run names the page that went with the browser when the agent closed the on
 });
 
 // --- entry point --------------------------------------------------------------
+//
+// These run the real entry script. Its PATH holds nothing but a stub `ps`, so it
+// can never fall back to the real process table: run from inside a Claude
+// session, that would find and close the developer's own browser.
 
 const ENTRY = fileURLToPath(new URL('../hooks/idle-browser.mjs', import.meta.url));
+const SESSION_PID = 4000001;
+const LAUNCHER_PID = 4000002;
+const SERVER_PID = 4000003;
 
-test('the hook entry exits quietly on input it cannot read, also through a symlink', () => {
+/** The way npm exec shows up in ps for the plugin's default server. */
+function chromeLauncherArgs() {
+  const server = JSON.parse(readFileSync(new URL('../.mcp.json', import.meta.url), 'utf8')).mcpServers.chrome;
+  const args = server.args.filter((a) => a !== '-y').map((a) => a.replace(/\$\{user_config\.[^}]+\}/, '1024'));
+  return `npm exec ${args.join(' ')}`;
+}
+
+/** A directory with a `ps` that reports the hook's own process inside a fake session. */
+function stubPath(dir, victimPid) {
+  const rows = [
+    '    1     0 /sbin/launchd',
+    `${SESSION_PID}     1 claude`,
+    `$PPID ${SESSION_PID} node idle-browser.mjs`,
+    `${LAUNCHER_PID} ${SESSION_PID} ${chromeLauncherArgs()}`,
+    `${SERVER_PID} ${LAUNCHER_PID} chrome-devtools-mcp`,
+    `${victimPid} ${SERVER_PID} /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-pipe`,
+  ];
+  const script = `#!/bin/sh\nprintf '%s\\n' ${rows.map((r) => `"${r}"`).join(' ')}\n`;
+  writeFileSync(join(dir, 'ps'), script);
+  chmodSync(join(dir, 'ps'), 0o755);
+  return dir;
+}
+
+function closePageInput(text) {
+  return JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_chrome-budget_chrome__close_page',
+    tool_input: { pageId: 2 }, tool_response: [{ type: 'text', text }] });
+}
+
+/** A stand-in for Chrome: a child that only ends when it is signalled. */
+function spawnVictim() {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  const ended = new Promise((resolve) => child.on('exit', (code, signal) => resolve(signal)));
+  return { child, ended };
+}
+
+test('the hook entry closes the idle browser, run directly and through a symlink', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'idle-browser-'));
+  const victims = [];
   try {
     const linked = join(dir, 'idle-browser.mjs');
     symlinkSync(ENTRY, linked);
     for (const script of [ENTRY, linked]) {
-      const result = spawnSync(process.execPath, [script], { input: 'not json', encoding: 'utf8' });
+      const victim = spawnVictim();
+      victims.push(victim.child);
+      const bin = mkdtempSync(join(dir, 'bin-'));
+      const result = spawnSync(process.execPath, [script], {
+        input: closePageInput('## Pages\n1: about:blank [selected]'),
+        encoding: 'utf8',
+        env: { PATH: stubPath(bin, victim.child.pid) },
+        timeout: 10000,
+      });
       assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /browser was closed/, `${script} did not act`);
+      const signal = await Promise.race([victim.ended, new Promise((r) => setTimeout(() => r('still running'), 3000))]);
+      assert.equal(signal, 'SIGTERM', `${script} did not end the browser`);
+    }
+  } finally {
+    for (const child of victims) child.kill('SIGKILL');
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the hook entry exits quietly, whatever it is fed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'idle-browser-'));
+  try {
+    // Deep enough to overflow a recursive walk of the response.
+    let nested = '"## Pages\\n1: about:blank"';
+    for (let i = 0; i < 200000; i++) nested = `[${nested}]`;
+    const deep = `{"tool_name":"mcp__plugin_chrome-budget_chrome__close_page","tool_input":{"pageId":2},"tool_response":${nested}}`;
+    for (const input of ['not json', '42', 'null', deep]) {
+      const result = spawnSync(process.execPath, [ENTRY], { input, encoding: 'utf8', env: { PATH: dir }, timeout: 10000 });
+      assert.equal(result.status, 0, `${input.slice(0, 20)}: ${result.stderr.slice(0, 200)}`);
       assert.equal(result.stdout, '');
       assert.equal(result.stderr, '');
     }

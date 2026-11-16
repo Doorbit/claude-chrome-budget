@@ -33,7 +33,14 @@ const PLUGIN_SERVER_PREFIX = 'plugin_chrome-budget_';
 const SERVERS = ['chrome', 'chrome-pixel', 'chrome-debug'];
 // chrome-devtools-mcp's own wording (CLOSE_PAGE_ERROR), returned as text, not as an error.
 const LAST_PAGE_REFUSAL = 'The last open page cannot be closed';
-const BLANK = 'about:blank';
+// A blank page is printed as its bare URL; any page with a title is printed as
+// "title (url)", so the parenthesis is what a page cannot fake its way past —
+// its title is under the site's control, the URL form is not.
+const BLANK_ENTRY = /^about:blank(?: \[selected\])?(?: isolatedContext=[^()]*)?$/;
+// The plugin's launchers, as .mcp.json starts them (test/mcp-config.test.mjs
+// keeps the two in step). A user's own chrome-devtools-mcp, or a shell command
+// that merely mentions it, is not ours.
+const LAUNCHER = 'chrome-devtools-mcp@1.8.0 --isolated --no-usage-statistics';
 const DISABLED = new Set(['false', '0', 'off', 'no', 'keep']);
 // -ww: Claude Code sets COLUMNS for hooks, and procps on Linux honours it even
 // when piped, which would cut Chrome's command line before --remote-debugging-pipe.
@@ -75,9 +82,9 @@ export function listedPages(text) {
   return pages;
 }
 
-/** The label the server prints for a page, stripped of selection and context markers. */
+/** A page's title and URL as the server prints them, for telling the model what went. */
 function pageLabel(entry) {
-  return entry.replace(/ isolatedContext=.*$/, '').replace(/ \[selected\]$/, '');
+  return entry.replace(/ isolatedContext=[^()]*$/, '').replace(/ \[selected\]$/, '');
 }
 
 /**
@@ -88,7 +95,7 @@ function pageLabel(entry) {
 export function idleReason(text, requestedPageId) {
   const pages = listedPages(text);
   if (!pages || pages.length === 0) return null;
-  if (pages.every(({ entry }) => pageLabel(entry) === BLANK)) return { reason: 'blank' };
+  if (pages.every(({ entry }) => BLANK_ENTRY.test(entry))) return { reason: 'blank' };
   // The server refuses whenever a single page is left, before it looks at the
   // id — so the refusal alone does not say the agent meant that page. Only a
   // request for exactly that page does.
@@ -125,10 +132,8 @@ export function parseProcessTable(output) {
  * apart: only the debug server analyses memory, only the pixel server leaves
  * screenshots uncapped.
  */
-function launchedServer(args) {
-  // Pinned version and --isolated, as .mcp.json starts them: a user's own
-  // chrome-devtools-mcp, or a shell command that merely mentions it, is not ours.
-  if (!/chrome-devtools-mcp@\S+ --isolated\b/.test(args)) return null;
+export function launchedServer(args) {
+  if (!args.includes(LAUNCHER)) return null;
   if (args.includes('--memoryDebugging')) return 'chrome-debug';
   if (args.includes('--screenshotMaxWidth')) return 'chrome';
   return 'chrome-pixel';

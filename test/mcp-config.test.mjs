@@ -27,3 +27,11 @@ test('the idle-browser hook cannot hold up a turn for long', () => {
   const command = entry.hooks.find((c) => c.command.includes('idle-browser.mjs'));
   assert.ok(Number.isFinite(command.timeout) && command.timeout <= 10, 'no short timeout on the hook');
 });
+
+test('the idle-browser hook recognises each server exactly as .mcp.json launches it', async () => {
+  const { launchedServer } = await import('../hooks/idle-browser-core.mjs');
+  for (const [name, server] of Object.entries(servers)) {
+    const args = server.args.filter((a) => a !== '-y').map((a) => a.replace(/\$\{user_config\.[^}]+\}/, '1024'));
+    assert.equal(launchedServer(`npm exec ${args.join(' ')}`), name, `${name} is not recognised`);
+  }
+});

@@ -15,15 +15,22 @@ try {
   process.exit(0);
 }
 
-const output = run(input, {
-  pid: process.pid,
-  env: process.env,
-  processTable: () => execFileSync('ps', PS_ARGS, {
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: PS_TIMEOUT_MS,
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }),
-  kill: (target) => process.kill(target, 'SIGTERM'),
-});
+// A hook that fails must fail silently: anything unexpected — down to a stack
+// overflow on absurdly nested input — ends here as "nothing to do".
+let output = null;
+try {
+  output = run(input, {
+    pid: process.pid,
+    env: process.env,
+    processTable: () => execFileSync('ps', PS_ARGS, {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: PS_TIMEOUT_MS,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }),
+    kill: (target) => process.kill(target, 'SIGTERM'),
+  });
+} catch {
+  process.exit(0);
+}
 if (output) process.stdout.write(JSON.stringify(output));
