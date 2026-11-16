@@ -105,6 +105,23 @@ does the real work there anyway: it took the measured tab count from an average 
 Set `enforcement` to `warn` for the explanations without the rewrites, or `off` to
 disable the hook.
 
+**Browsers that do not outlive their use.** chrome-devtools-mcp will not close the
+last page, and the Chrome it launched lives as long as the server — which is as
+long as the Claude session. An agent that closes every tab it opened still leaves a
+window on `about:blank` behind, measured at 700–900 MB each and held for as long as
+the session stays open, which for a forgotten terminal tab can be weeks. A
+`PostToolUse` hook on `close_page` ends that server's Chrome once nothing but blank
+tabs remain, or when the agent asks to close the only page there is. The server
+notices the browser is gone and launches a fresh one on the next call, so nothing
+breaks; what is lost is the state — the next call starts from a clean profile and
+has to log in again. The hook only ever touches the browser of the server that
+answered, in its own session, and does nothing when it cannot tell which one that
+is. Set `close_idle_browser` to `false` to keep idle browsers around.
+
+The servers also run with `--no-usage-statistics`. With statistics on, every server
+starts a separate telemetry watchdog to report usage to Google — three processes per
+session, about 35 MB each, measured at 1.8 GB across 18 open sessions.
+
 **Two subagents.** They absorb the snapshots, screenshots and traces in their own
 context and return a finding, which is what actually defuses the 805×.
 
@@ -140,7 +157,7 @@ Verify the install:
 claude plugin details chrome-budget
 ```
 
-Expect two agents (`browser`, `browser-debug`), one `PreToolUse` hook, and three MCP
+Expect two agents (`browser`, `browser-debug`), a `PreToolUse` and a `PostToolUse` hook, and three MCP
 servers, at a
 standing context cost of a few hundred tokens — the agents' descriptions in the
 subagent list. The Chrome processes launch lazily, so a server you do not use
@@ -172,6 +189,7 @@ Via `claude plugin install --config`, or the plugin's settings:
 | `screenshot_max_width` | 1024 | Downscale threshold. The only setting that reduces image tokens. |
 | `screenshot_max_height` | 768 | Same, for height. Smaller scale factor wins. |
 | `enforcement` | `correct` | `correct` rewrites, `warn` only explains, `off` disables. Nothing is refused. |
+| `close_idle_browser` | `true` | Close a browser once `close_page` leaves only blank tabs. `false` keeps it, and its logins, until the session ends. |
 
 ## Verify it is working
 
@@ -181,6 +199,12 @@ node scripts/chrome-token-report.mjs --since 2026-09   # after installing
 
 Compare `avg` for `take_screenshot` and the size of the `## Pages` block against a
 period before installation.
+
+## Test
+
+```bash
+node --test
+```
 
 ## License
 

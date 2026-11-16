@@ -7,7 +7,18 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/chrome-guard.mjs\"",
-            "statusMessage": "Chrome-Budget pr\u00fcfen"
+            "statusMessage": "Chrome-Budget prüfen"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_chrome-budget_chrome(-pixel|-debug)?__close_page",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/idle-browser.mjs\""
           }
         ]
       }
