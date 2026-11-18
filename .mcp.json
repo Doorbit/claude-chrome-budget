@@ -7,6 +7,9 @@
         "chrome-devtools-mcp@1.8.0",
         "--isolated",
         "--no-usage-statistics",
+        "--headless=${user_config.headless}",
+        "--viewport",
+        "1280x800",
         "--screenshotMaxWidth",
         "${user_config.screenshot_max_width}",
         "--screenshotMaxHeight",
@@ -19,7 +22,10 @@
         "-y",
         "chrome-devtools-mcp@1.8.0",
         "--isolated",
-        "--no-usage-statistics"
+        "--no-usage-statistics",
+        "--headless=${user_config.headless}",
+        "--viewport",
+        "1280x800"
       ]
     },
     "chrome-debug": {
@@ -29,6 +35,9 @@
         "chrome-devtools-mcp@1.8.0",
         "--isolated",
         "--no-usage-statistics",
+        "--headless=${user_config.headless}",
+        "--viewport",
+        "1280x800",
         "--memoryDebugging",
         "--screenshotMaxWidth",
         "${user_config.screenshot_max_width}",

@@ -35,3 +35,14 @@ test('the idle-browser hook recognises each server exactly as .mcp.json launches
     assert.equal(launchedServer(`npm exec ${args.join(' ')}`), name, `${name} is not recognised`);
   }
 });
+
+test('every server runs headless by default, so no browser window takes the focus', () => {
+  const config = JSON.parse(readFileSync(new URL('.claude-plugin/plugin.json', root), 'utf8')).userConfig;
+  assert.equal(config.headless?.type, 'boolean');
+  assert.equal(config.headless.default, true);
+  for (const [name, server] of Object.entries(servers)) {
+    assert.ok(server.args.includes('--headless=${user_config.headless}'), `${name} ignores the headless option`);
+    const at = server.args.indexOf('--viewport');
+    assert.ok(at > 0 && /^\d+x\d+$/.test(server.args[at + 1]), `${name} has no fixed viewport`);
+  }
+});

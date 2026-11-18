@@ -121,6 +121,18 @@ another agent opens in the half second between `close_page` and the hook goes do
 with it — that agent's next call then reports the restart. Set `close_idle_browser`
 to `false` to keep idle browsers around.
 
+**The browsers run without a window.** A launched Chrome makes itself the front
+app, so every agent that opened a page used to take the keyboard from whatever you
+were typing in. Measured on macOS: Chrome becomes frontmost at launch and stays
+there through every call; starting it in the background (`open -g`) and attaching
+with `--browserUrl` does not help, because Chrome activates itself. Headless Chrome
+never changes the front app, even on `select_page` with `bringToFront`, and WebGL
+still runs on the real GPU (ANGLE on Metal, frame times within noise of a windowed
+browser). The viewport is fixed at 1280×800 so pages lay out the same on every
+machine. What you give up: you cannot watch the agent work, headless Chrome has no
+WebGPU, and the user agent says `HeadlessChrome`. Set `headless` to `false` when you
+need any of those back.
+
 The servers also run with `--no-usage-statistics`. With statistics on, every server
 starts a separate telemetry watchdog to report usage to Google — three processes per
 session, about 35 MB each, measured at 1.8 GB across 18 open sessions.
@@ -192,6 +204,7 @@ Via `claude plugin install --config`, or the plugin's settings:
 | `screenshot_max_width` | 1024 | Downscale threshold. The only setting that reduces image tokens. |
 | `screenshot_max_height` | 768 | Same, for height. Smaller scale factor wins. |
 | `enforcement` | `correct` | `correct` rewrites, `warn` only explains, `off` disables. Nothing is refused. |
+| `headless` | `true` | Run Chrome without a window, so it never takes the focus. `false` shows the window (needed to watch the agent, or for WebGPU). |
 | `close_idle_browser` | `true` | Close a browser once `close_page` leaves only blank tabs. `false` keeps it, and its logins, until the session ends. |
 
 ## Verify it is working
