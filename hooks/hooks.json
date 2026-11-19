@@ -14,11 +14,21 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__plugin_chrome-budget_chrome(-pixel|-debug)?__close_page",
+        "matcher": "mcp__plugin_chrome-budget_chrome(-pixel|-debug|-visible)?__close_page",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/idle-browser.mjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_chrome-budget_chrome(-pixel|-debug)?__(new_page|navigate_page)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/login-hint.mjs\"",
             "timeout": 5
           }
         ]

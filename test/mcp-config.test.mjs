@@ -36,13 +36,36 @@ test('the idle-browser hook recognises each server exactly as .mcp.json launches
   }
 });
 
-test('every server runs headless by default, so no browser window takes the focus', () => {
+test('every server but chrome-visible runs headless by default, so no browser window takes the focus', () => {
   const config = JSON.parse(readFileSync(new URL('.claude-plugin/plugin.json', root), 'utf8')).userConfig;
   assert.equal(config.headless?.type, 'boolean');
   assert.equal(config.headless.default, true);
   for (const [name, server] of Object.entries(servers)) {
-    assert.ok(server.args.includes('--headless=${user_config.headless}'), `${name} ignores the headless option`);
     const at = server.args.indexOf('--viewport');
     assert.ok(at > 0 && /^\d+x\d+$/.test(server.args[at + 1]), `${name} has no fixed viewport`);
+    if (name === 'chrome-visible') continue;
+    assert.ok(server.args.includes('--headless=${user_config.headless}'), `${name} ignores the headless option`);
   }
+});
+
+test('chrome-visible always shows its window, whatever the headless option says', () => {
+  const visible = servers['chrome-visible'];
+  assert.ok(visible, 'there is no chrome-visible server for logins and hand-overs');
+  assert.ok(visible.args.includes('--headless=false'), 'chrome-visible does not force a window');
+  assert.ok(!visible.args.some((a) => a.includes('${user_config.headless}')), 'chrome-visible follows the headless option');
+});
+
+test('the login hint runs after page loads on the headless servers only', () => {
+  const entry = hooks.PostToolUse?.find((h) => h.hooks.some((c) => c.command.includes('login-hint.mjs')));
+  assert.ok(entry, 'no PostToolUse hook runs login-hint.mjs');
+  const matcher = new RegExp(`^(?:${entry.matcher})$`);
+  for (const name of ['chrome', 'chrome-pixel', 'chrome-debug']) {
+    for (const tool of ['new_page', 'navigate_page']) {
+      assert.ok(matcher.test(`mcp__plugin_chrome-budget_${name}__${tool}`), `matcher misses ${name} ${tool}`);
+    }
+  }
+  assert.equal(matcher.test('mcp__plugin_chrome-budget_chrome-visible__new_page'), false);
+  assert.equal(matcher.test('mcp__plugin_chrome-budget_chrome__click'), false);
+  const command = entry.hooks.find((c) => c.command.includes('login-hint.mjs'));
+  assert.ok(Number.isFinite(command.timeout) && command.timeout <= 10, 'no short timeout on the hook');
 });

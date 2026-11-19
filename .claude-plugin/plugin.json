@@ -1,8 +1,8 @@
 {
   "name": "chrome-budget",
   "displayName": "Chrome MCP Budget",
-  "version": "0.9.0",
-  "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
+  "version": "0.10.0",
+  "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, a visible one for sign-ins, and a guard that redirects expensive calls to cheap equivalents.",
   "author": {
     "name": "Doorbit"
   },
@@ -43,7 +43,7 @@
     "headless": {
       "type": "boolean",
       "title": "Run Chrome without a window",
-      "description": "On, the browsers run headless: no window ever appears or takes the keyboard focus while you work. WebGL still runs on the real GPU. Off shows the window, which you need to watch the agent click through a page or to test WebGPU (headless Chrome has none).",
+      "description": "On, the browsers run headless: no window ever appears or takes the keyboard focus while you work. WebGL still runs on the real GPU. Off shows the windows, which you need to watch the agent click through a page or to test WebGPU (headless Chrome has none). chrome-visible, the browser for sign-ins, always has a window.",
       "default": true
     },
     "close_idle_browser": {

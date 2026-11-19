@@ -9,8 +9,8 @@
     {
       "name": "chrome-budget",
       "displayName": "Chrome MCP Budget",
-      "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, and a guard that redirects expensive calls to cheap equivalents.",
-      "version": "0.8.0",
+      "description": "Keeps chrome-devtools-mcp from flooding the model context: a capped default browser, an uncapped one for pixel work, a visible one for sign-ins, and a guard that redirects expensive calls to cheap equivalents.",
+      "version": "0.10.0",
       "category": "mcp",
       "source": "./"
     }

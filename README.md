@@ -43,7 +43,7 @@ token cost by nothing at all. Only the pixel dimensions matter.
 
 ## What the plugin does
 
-**Three browsers instead of one**, because the three jobs have genuinely different
+**Four browsers instead of one**, because the four jobs have genuinely different
 needs. All run `--isolated`, so each starts from a clean profile instead of
 inheriting a pile of tabs from last week, and all launch Chrome lazily — a server
 you do not use costs nothing.
@@ -58,6 +58,10 @@ you do not use costs nothing.
   (`get_heapsnapshot_summary`, `compare_heapsnapshots`, `query_heapsnapshot_objects`
   and the rest) exist only here. Without it you can capture a heap snapshot but not
   analyse one.
+- `chrome-visible` — the one browser with a window, whatever the `headless` option
+  says: for pages where a person has to do something, above all signing in. It
+  carries the default screenshot cap and leaves out the performance and emulation
+  tools, which nobody needs for a hand-over.
 
 **A guard that corrects the call rather than refusing it.** A `PreToolUse` hook
 rewrites the handful of call shapes that are reliably expensive into the cheap
@@ -133,6 +137,14 @@ machine. What you give up: you cannot watch the agent work, headless Chrome has 
 WebGPU, and the user agent says `HeadlessChrome`. Set `headless` to `false` when you
 need any of those back.
 
+What you also give up is the person: nobody can sign in on a page they cannot see.
+So when `new_page` or `navigate_page` on a headless server lands on a sign-in page
+(a host such as `auth.` or `login.`, or a path such as `/login` or an OAuth/OIDC
+authorise endpoint), a `PostToolUse` hook tells the model to open that URL on
+`chrome-visible` and have the person sign in there. It only advises: a model with
+credentials of its own carries on where it is. Logins do not carry over between
+servers — each runs its own isolated profile.
+
 The servers also run with `--no-usage-statistics`. With statistics on, every server
 starts a separate telemetry watchdog to report usage to Google — three processes per
 session, about 35 MB each, measured at 1.8 GB across 18 open sessions.
@@ -204,7 +216,7 @@ Via `claude plugin install --config`, or the plugin's settings:
 | `screenshot_max_width` | 1024 | Downscale threshold. The only setting that reduces image tokens. |
 | `screenshot_max_height` | 768 | Same, for height. Smaller scale factor wins. |
 | `enforcement` | `correct` | `correct` rewrites, `warn` only explains, `off` disables. Nothing is refused. |
-| `headless` | `true` | Run Chrome without a window, so it never takes the focus. `false` shows the window (needed to watch the agent, or for WebGPU). |
+| `headless` | `true` | Run `chrome`, `chrome-pixel` and `chrome-debug` without a window, so they never take the focus. `false` shows their windows (needed to watch the agent, or for WebGPU). `chrome-visible` always has one. |
 | `close_idle_browser` | `true` | Close a browser once `close_page` leaves only blank tabs. `false` keeps it, and its logins, until the session ends. |
 
 ## Verify it is working

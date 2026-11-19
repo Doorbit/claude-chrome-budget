@@ -30,7 +30,7 @@
 
 
 const PLUGIN_SERVER_PREFIX = 'plugin_chrome-budget_';
-const SERVERS = ['chrome', 'chrome-pixel', 'chrome-debug'];
+const SERVERS = ['chrome', 'chrome-pixel', 'chrome-debug', 'chrome-visible'];
 // chrome-devtools-mcp's own wording (CLOSE_PAGE_ERROR), returned as text, not as an error.
 const LAST_PAGE_REFUSAL = 'The last open page cannot be closed';
 // A blank page is printed as its bare URL; any page with a title is printed as
@@ -105,7 +105,7 @@ export function idleReason(text, requestedPageId) {
   return null;
 }
 
-/** 'chrome' | 'chrome-pixel' | 'chrome-debug' for this plugin's tools, else null. */
+/** 'chrome' | 'chrome-pixel' | 'chrome-debug' | 'chrome-visible' for this plugin's tools, else null. */
 export function serverOf(toolName) {
   const raw = String(toolName || '');
   if (!raw.startsWith('mcp__')) return null;
@@ -135,6 +135,9 @@ export function parseProcessTable(output) {
 export function launchedServer(args) {
   if (!args.includes(LAUNCHER)) return null;
   if (args.includes('--memoryDebugging')) return 'chrome-debug';
+  // Only the hand-over browser drops the performance tools; checked before the
+  // screenshot cap, which it shares with the default server.
+  if (args.includes('--categoryPerformance=false')) return 'chrome-visible';
   if (args.includes('--screenshotMaxWidth')) return 'chrome';
   return 'chrome-pixel';
 }

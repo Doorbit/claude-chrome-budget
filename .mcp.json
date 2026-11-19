@@ -44,6 +44,24 @@
         "--screenshotMaxHeight",
         "${user_config.screenshot_max_height}"
       ]
+    },
+    "chrome-visible": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.8.0",
+        "--isolated",
+        "--no-usage-statistics",
+        "--headless=false",
+        "--viewport",
+        "1280x800",
+        "--categoryPerformance=false",
+        "--categoryEmulation=false",
+        "--screenshotMaxWidth",
+        "${user_config.screenshot_max_width}",
+        "--screenshotMaxHeight",
+        "${user_config.screenshot_max_height}"
+      ]
     }
   }
 }
